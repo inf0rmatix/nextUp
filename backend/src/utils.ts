@@ -1,9 +1,5 @@
-import type {
-  ParticipantRow,
-  ProfileRow,
-  FormattedParticipant,
-  FormattedProfile,
-} from './types/index.js';
+import type { ParticipantRow, ProfileRow } from './types/index.js';
+import type { Participant, Profile } from '@nextup/shared';
 
 // Utility functions
 
@@ -35,7 +31,7 @@ export function getMediaType(mimetype: string): 'image' | 'video' | null {
 
 export function formatParticipant(
   participant: ParticipantRow | undefined | null
-): FormattedParticipant | null {
+): Participant | null {
   if (!participant) return null;
   return {
     id: participant.id,
@@ -56,7 +52,7 @@ export function formatParticipant(
   };
 }
 
-export function formatProfile(profile: ProfileRow | undefined | null): FormattedProfile | null {
+export function formatProfile(profile: ProfileRow | undefined | null): Profile | null {
   if (!profile) return null;
   return {
     id: profile.id,

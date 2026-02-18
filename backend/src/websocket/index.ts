@@ -1,14 +1,17 @@
 import type { Server } from 'http';
 import { WebSocketServer, type WebSocket as WS } from 'ws';
 import { profileQueries, roomQueries } from '../db.js';
-import type {
-  ClientRole,
-  ExtendedWebSocket,
-  JoinMessage,
-  TimerControlMessage,
-  TimerState,
-  WebSocketManagerInterface,
-  WSClient,
+import {
+  ClientMessageSchema,
+  ServerMessageSchema,
+  treeifyError,
+  type ClientMessage,
+  type ClientRole,
+  type ExtendedWebSocket,
+  type ServerMessage,
+  type TimerState,
+  type WebSocketManagerInterface,
+  type WSClient,
 } from '../types/index.js';
 
 export class WebSocketManager implements WebSocketManagerInterface {
@@ -64,27 +67,44 @@ export class WebSocketManager implements WebSocketManagerInterface {
     }, 30000);
   }
 
-  private send(ws: ExtendedWebSocket, data: object): void {
+  private send(ws: ExtendedWebSocket, data: ServerMessage): void {
     if (ws.readyState === 1) {
       // WebSocket.OPEN
-      ws.send(JSON.stringify(data));
+      try {
+        const validated = ServerMessageSchema.parse(data);
+        ws.send(JSON.stringify(validated));
+      } catch (error) {
+        console.error('[WS] Failed to validate outgoing message:', error, data);
+      }
     }
   }
 
-  private handleMessage(ws: ExtendedWebSocket, data: JoinMessage | TimerControlMessage): void {
-    switch (data.type) {
+  private handleMessage(ws: ExtendedWebSocket, data: unknown): void {
+    const result = ClientMessageSchema.safeParse(data);
+
+    if (!result.success) {
+      console.error('[WS] Validation error:', result.error.message);
+      this.send(ws, {
+        type: 'error',
+        message: 'Invalid message format or content',
+        errors: treeifyError(result.error) as Record<string, unknown>,
+      });
+      return;
+    }
+
+    const message = result.data;
+
+    switch (message.type) {
       case 'join':
-        this.handleJoin(ws, data as JoinMessage);
+        this.handleJoin(ws, message);
         break;
       case 'timer_control':
-        this.handleTimerControl(ws, data as TimerControlMessage);
+        this.handleTimerControl(ws, message);
         break;
-      default:
-        this.send(ws, { type: 'error', message: 'Unknown message type' });
     }
   }
 
-  private handleJoin(ws: ExtendedWebSocket, data: JoinMessage): void {
+  private handleJoin(ws: ExtendedWebSocket, data: Extract<ClientMessage, { type: 'join' }>): void {
     console.log(
       `[WS] Join request: roomId=${data.roomId}, role=${data.role}, hasPassphrase=${!!data.passphrase}`
     );
@@ -140,6 +160,7 @@ export class WebSocketManager implements WebSocketManagerInterface {
       roomId,
       role,
       clientId,
+      profileId: profile?.id,
     });
 
     // Send current timer state if timer is running
@@ -170,7 +191,10 @@ export class WebSocketManager implements WebSocketManagerInterface {
     }
   }
 
-  private handleTimerControl(ws: ExtendedWebSocket, data: TimerControlMessage): void {
+  private handleTimerControl(
+    ws: ExtendedWebSocket,
+    data: Extract<ClientMessage, { type: 'timer_control' }>
+  ): void {
     const { action, roomId, duration } = data;
 
     // Only presenter and admin can control timer
@@ -193,7 +217,7 @@ export class WebSocketManager implements WebSocketManagerInterface {
   }
 
   // Broadcast to all clients in a room
-  broadcastToRoom(roomId: string, data: object): void {
+  broadcastToRoom(roomId: string, data: ServerMessage): void {
     const roomClients = this.rooms.get(roomId);
     if (!roomClients) return;
 
@@ -203,7 +227,7 @@ export class WebSocketManager implements WebSocketManagerInterface {
   }
 
   // Broadcast to specific roles in a room
-  broadcastToRoles(roomId: string, roles: ClientRole[], data: object): void {
+  broadcastToRoles(roomId: string, roles: ClientRole[], data: ServerMessage): void {
     const roomClients = this.rooms.get(roomId);
     if (!roomClients) return;
 
@@ -215,7 +239,7 @@ export class WebSocketManager implements WebSocketManagerInterface {
   }
 
   // Send to a specific participant by profile ID
-  notifyParticipant(roomId: string, profileId: number, data: object): void {
+  notifyParticipant(roomId: string, profileId: number, data: ServerMessage): void {
     const roomClients = this.rooms.get(roomId);
     if (!roomClients) {
       console.log(`[WS] notifyParticipant: No clients in room ${roomId}`);

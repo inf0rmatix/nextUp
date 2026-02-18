@@ -12,16 +12,22 @@ A real-time web app for managing live presentation sessions where audience membe
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐     ┌─────────────────┐
-│    Frontend     │────▶│     Backend     │
-│   (Vue 3 SPA)   │◀────│   (Express +    │
-│                 │ WS  │   SQLite + WS)  │
-└─────────────────┘     └─────────────────┘
+│    Frontend     │◀──┐ ┌──▶│     Backend     │
+│   (Vue 3 SPA)   │   │ │   │   (Express +    │
+│                 │   │ │   │   SQLite + WS)  │
+└─────────────────┘   │ │   └─────────────────┘
+          │           │ │            │
+          │     ┌─────┴─┴─────┐      │
+          └────▶│   Shared    │◀─────┘
+                │ (Zod/Types) │
+                └─────────────┘
 ```
 
 - **Frontend**: Vue 3, Vite, Tailwind CSS, DaisyUI, VueUse
 - **Backend**: Express, better-sqlite3, ws (WebSocket)
+- **Shared**: Zod schemas and TypeScript types used by both frontend and backend
 - **Real-time**: WebSocket for all live updates (timer, waves, queue changes)
 
 ## Key Entities
@@ -60,7 +66,7 @@ Key events broadcasted:
 
 ## File Structure
 
-```
+```text
 ├── backend/
 │   ├── src/
 │   │   ├── index.js          # Express + WS setup
@@ -79,6 +85,12 @@ Key events broadcasted:
 │   │   ├── components/       # Shared UI
 │   │   └── composables/      # Vue hooks
 │   └── vite.config.js
+│
+├── packages/
+│   └── shared/               # SHARED PACKAGE
+│       ├── src/
+│       │   └── index.ts      # Zod schemas & types
+│       └── package.json
 ```
 
 ## API Patterns
@@ -97,20 +109,31 @@ Key events broadcasted:
 4. **Wave animations** — float up screen when waving at current presenter
 5. **"Current need" reveal** — fades in during final 1/3 of timer
 
+## Shared Package (@nextup/shared)
+
+- **Single Source of Truth**: All TypeScript types used by both frontend and backend MUST be defined in `packages/shared`.
+- **Zod Schemas**: Use Zod for runtime validation and type inference.
+- **Workflow**:
+  1. Modify `packages/shared/src/index.ts`.
+  2. Run `npm run build -w packages/shared` from root.
+  3. Types will be available in both apps via `@nextup/shared`.
+
 ## Development Commands
 
 ```bash
+# Root (Workspaces)
+npm install              # Install all dependencies and link
+npm run build -w packages/shared  # Rebuild shared types
+npm run lint             # Lint both apps
+
 # Backend
-cd backend && npm install && npm run dev
-npm run build    # Build project
-npm run format   # Format code
-npm run lint     # Lint code
+cd backend && npm run dev
+npm run build            # Build backend
+npm run typecheck        # Run tsc --noEmit
 
 # Frontend
-cd frontend && npm install && npm run dev
-npm run build    # Build project
-npm run format   # Format code
-npm run lint     # Lint code
+cd frontend && npm run dev
+npm run build            # Build frontend (Vite)
 ```
 
 ## Code Style & Standards

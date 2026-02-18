@@ -1,8 +1,9 @@
 import { Router, type Request, type Response } from 'express';
-import { roomQueries, profileQueries, participantQueries } from '../db.js';
-import { generatePassphrase } from '../words.js';
+import { participantQueries, profileQueries, roomQueries } from '../db.js';
+import type { ParticipantParams, ParticipantRow, RoomParams } from '../types/index.js';
+import { SubmissionDataSchema, treeifyError } from '../types/index.js';
 import { formatParticipant, sanitizeHtml, validateUrl } from '../utils.js';
-import type { ParticipantRow, RoomParams, ParticipantParams } from '../types/index.js';
+import { generatePassphrase } from '../words.js';
 
 const router = Router();
 
@@ -12,6 +13,14 @@ router.post('/:roomId/participants', (req: Request<RoomParams>, res: Response) =
     const room = roomQueries.getById.get(req.params.roomId);
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
+    }
+
+    const validation = SubmissionDataSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid submission data',
+        errors: treeifyError(validation.error),
+      });
     }
 
     const {
@@ -25,17 +34,7 @@ router.post('/:roomId/participants', (req: Request<RoomParams>, res: Response) =
       profile_image_path,
       presentation_media_path,
       media_type,
-    } = req.body;
-
-    // Validate required fields
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Name is required' });
-    }
-
-    // Validate URL if provided
-    if (project_url && !validateUrl(project_url)) {
-      return res.status(400).json({ error: 'Invalid project URL' });
-    }
+    } = validation.data;
 
     let profile;
     let isNewProfile = false;
